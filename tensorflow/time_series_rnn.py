@@ -38,7 +38,7 @@ def MinMaxScaler(data):
 
 
 # train Parameters
-seq_length = 7
+seq_length = 5
 data_dim = 5
 hidden_dim = 10
 output_dim = 1
@@ -76,13 +76,62 @@ testX, testY = build_dataset(test_set, seq_length)
 # input place holders
 X = tf.placeholder(tf.float32, [None, seq_length, data_dim])
 Y = tf.placeholder(tf.float32, [None, 1])
+'''
+def build_lstm_layers(lstm_sizes, embed, keep_prob_, batch_size):
+
+    """
+
+    Create the LSTM layers
+
+    """
+
+    lstms = [tf.contrib.rnn.BasicLSTMCell(size) for size in lstm_sizes]
+
+    # Add dropout to the cell
+
+    drops = [tf.contrib.rnn.DropoutWrapper(lstm, output_keep_prob=keep_prob_) for lstm in lstms]
+
+    # Stack up multiple LSTM layers, for deep learning
+
+    cell = tf.contrib.rnn.MultiRNNCell(drops)
+
+# Getting an initial state of all zeros
+
+    initial_state = cell.zero_state(batch_size, tf.float32)
+
+    lstm_outputs, final_state = tf.nn.dynamic_rnn(cell, embed, initial_state=initial_state)
 
 # build a LSTM network
-cell = tf.contrib.rnn.BasicLSTMCell(
-    num_units=hidden_dim, state_is_tuple=True, activation=tf.tanh)
+cell = tf.keras.layers.LSTMCell(
+    units=hidden_dim, activation=tf.tanh)
 outputs, _states = tf.nn.dynamic_rnn(cell, X, dtype=tf.float32)
 Y_pred = tf.contrib.layers.fully_connected(
     outputs[:, -1], output_dim, activation_fn=None)  # We use the last cell's output
+
+
+'''
+lstm_sizes = 1
+keep_prob_ = 1
+
+lstms = []
+for i in range(lstm_sizes):
+    lstms.append(tf.contrib.rnn.BasicLSTMCell(
+    num_units=hidden_dim, state_is_tuple=True, activation=tf.tanh))
+
+# Add dropout to the cell
+drops = [tf.contrib.rnn.DropoutWrapper(lstm, output_keep_prob=keep_prob_) for lstm in lstms]
+
+# Stack up multiple LSTM layers, for deep learning
+
+cell = tf.contrib.rnn.MultiRNNCell(drops)
+
+
+#cell = tf.contrib.rnn.BasicLSTMCell(num_units=hidden_dim, state_is_tuple=True, activation=tf.tanh)
+outputs, _states = tf.nn.dynamic_rnn(cell, X, dtype=tf.float32)
+
+Y_pred = tf.contrib.layers.fully_connected(
+    outputs[:, -1], output_dim, activation_fn=None)  # We use the last cell's output
+
 
 # cost/loss
 loss = tf.reduce_sum(tf.square(Y_pred - Y))  # sum of the squares
@@ -95,6 +144,12 @@ targets = tf.placeholder(tf.float32, [None, 1])
 predictions = tf.placeholder(tf.float32, [None, 1])
 rmse = tf.sqrt(tf.reduce_mean(tf.square(targets - predictions)))
 
+# R squared
+total_error = tf.reduce_sum(tf.square(tf.subtract(targets, tf.reduce_mean(targets))))
+unexplained_error = tf.reduce_sum(tf.square(tf.subtract(targets, predictions)))
+R_squared = tf.subtract(1.0, tf.div(unexplained_error, total_error))
+
+
 with tf.Session() as sess:
     init = tf.global_variables_initializer()
     sess.run(init)
@@ -103,17 +158,21 @@ with tf.Session() as sess:
     for i in range(iterations):
         _, step_loss = sess.run([train, loss], feed_dict={
                                 X: trainX, Y: trainY})
-        print("[step: {}] loss: {}".format(i, step_loss))
+        if i%100 == 0 or i == iterations - 1:
+            print("[step: {}] loss: {}".format(i, step_loss))
 
     # Test step
     test_predict = sess.run(Y_pred, feed_dict={X: testX})
     rmse_val = sess.run(rmse, feed_dict={
                     targets: testY, predictions: test_predict})
+    r_squared = sess.run(R_squared, feed_dict={
+                    targets: testY, predictions: test_predict})
     print("RMSE: {}".format(rmse_val))
-
+    print("R squared: {}".format(r_squared))
+    print("Target std: {}".format(np.std(testY)))
     # Plot predictions
-    plt.plot(testY)
-    plt.plot(test_predict)
+    plt.plot(testY, color = 'blue')
+    plt.plot(test_predict, color = 'red')
     plt.xlabel("Time Period")
     plt.ylabel("Stock Price")
     plt.show()
